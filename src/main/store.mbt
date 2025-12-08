@@ -25,6 +25,7 @@ enum ActionOp {
   Increment
   Decrement
   IncTwice
+  FractionalDemoStatesChange(@respo.RespoUpdateState)
 }
 
 ///|
@@ -51,6 +52,8 @@ impl Show for ActionOp with output(self, logger) -> Unit {
     Noop => "Noop"
     StatesChange(state) =>
       "StatesChange(\{state.cursor} \{state.backup.to_json()})"
+    FractionalDemoStatesChange(state) =>
+      "FractionalDemoStatesChange(\{state.cursor} \{state.backup.to_json()})"
     // Intent(_intent) => "Intent(...)"
     Increment => "Increment"
     Decrement => "Decrement"
@@ -70,6 +73,7 @@ fn Store::update(self : Store, op : ActionOp) -> Unit {
   match op {
     Increment => self.counted += 1
     StatesChange(states) => self.states.set_in_mut(states)
+    FractionalDemoStatesChange(states) => self.states.set_in_mut(states)
     Decrement => self.counted -= 1
     _ => ()
   }

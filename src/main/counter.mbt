@@ -1,11 +1,4 @@
 ///|
-using @respo_node {
-  text_node,
-  type RespoEvent,
-  type RespoNode,
-  type DispatchFn,
-  type RespoCommonError,
-}
 
 ///|
 struct MainState {
@@ -23,7 +16,7 @@ fn comp_counter(
   let on_inc = fn(
     e : RespoEvent,
     dispatch : DispatchFn[ActionOp],
-  ) -> Unit raise RespoCommonError {
+  ) -> Unit raise @respo_node.RespoCommonError {
     @dom_ffi.warn_log("inc click: \{e}")
     if e is Click(original_event~, ..) {
       original_event.prevent_default()
@@ -35,7 +28,7 @@ fn comp_counter(
   let on_dec = fn(
     e : RespoEvent,
     dispatch : DispatchFn[ActionOp],
-  ) -> Unit raise RespoCommonError {
+  ) -> Unit raise @respo_node.RespoCommonError {
     @dom_ffi.warn_log("dec click: \{e}")
     dispatch.run(Decrement)
     let next_state = MainState::{ counted: state.counted - 1 }
@@ -44,7 +37,7 @@ fn comp_counter(
   let on_inc_twice = fn(
     e : RespoEvent,
     dispatch : DispatchFn[ActionOp],
-  ) -> Unit raise RespoCommonError {
+  ) -> Unit raise @respo_node.RespoCommonError {
     @dom_ffi.warn_log("twice click: \{e}")
     dispatch.run(IncTwice)
     let next_state = MainState::{ counted: state.counted + 2 }

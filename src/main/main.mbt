@@ -1,8 +1,28 @@
 ///|
-using @respo_node {div, span, button}
+using @css {respo_style}
 
 ///|
-using @css {respo_style}
+using @respo_node {
+  div,
+  h2,
+  h3,
+  p,
+  text_node,
+  span,
+  button,
+  type RespoEvent,
+  type RespoNode,
+  type DispatchFn,
+  type RespoCommonError,
+}
+
+///|
+
+///|
+
+///|
+
+///|
 
 ///|
 let app_store_key : String = "mbt-workflow"
@@ -16,8 +36,19 @@ fn view(
   }
   // @dom_ffi.log("Store to render: " + store.to_json().stringify(indent=2))
   let states = store.get_states()
-  div(class_name=@respo.ui_global, style=respo_style(padding=Px(12)), [
-    comp_counter(states.pick("counter"), store.counted),
+  div(class_name=@respo.ui_global, style=respo_style(padding=12 |> Px), [
+    div([
+      h2(inner_text="Lexicographic Fractional Index Demo", []),
+      p(
+        inner_text="Drag items to reorder them. Keys are automatically generated using fractional indexing.",
+        [],
+      ),
+    ]),
+    comp_fractional_index_demo(states.pick("fractional_demo"), fn(_op) { () }),
+    div(style=respo_style(margin_top=40 |> Px), [
+      h3(inner_text="Original Counter Demo", []),
+      comp_counter(states.pick("counter"), store.counted),
+    ]),
   ])
 }
 
