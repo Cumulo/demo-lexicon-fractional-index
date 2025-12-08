@@ -5,15 +5,12 @@ using @css {respo_style}
 using @respo_node {
   div,
   h2,
-  h3,
   p,
   text_node,
-  span,
   button,
   type RespoEvent,
   type RespoNode,
   type DispatchFn,
-  type RespoCommonError,
 }
 
 ///|
@@ -44,11 +41,7 @@ fn view(
         [],
       ),
     ]),
-    comp_fractional_index_demo(states.pick("fractional_demo"), fn(_op) { () }),
-    div(style=respo_style(margin_top=40 |> Px), [
-      h3(inner_text="Original Counter Demo", []),
-      comp_counter(states.pick("counter"), store.counted),
-    ]),
+    comp_fractional_index_demo(states.pick("fractional_demo")),
   ])
 }
 
