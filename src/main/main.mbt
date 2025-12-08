@@ -4,7 +4,6 @@ using @css {respo_style}
 ///|
 using @respo_node {
   div,
-  h2,
   p,
   text_node,
   button,
@@ -34,13 +33,6 @@ fn view(
   // @dom_ffi.log("Store to render: " + store.to_json().stringify(indent=2))
   let states = store.get_states()
   div(class_name=@respo.ui_global, style=respo_style(padding=12 |> Px), [
-    div([
-      h2(inner_text="Lexicographic Fractional Index Demo", []),
-      p(
-        inner_text="Drag items to reorder them. Keys are automatically generated using fractional indexing.",
-        [],
-      ),
-    ]),
     comp_fractional_index_demo(states.pick("fractional_demo")),
   ])
 }
