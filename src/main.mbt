@@ -24,7 +24,9 @@ fn view(
   if false {
     raise @respo_node.RespoCommonError("TODO")
   }
-  // @dom_ffi.log("Store to render: " + store.to_json().stringify(indent=2))
+  @dom_ffi.log(
+    "view rendering, store states: " + store.get_states().to_json().stringify(),
+  )
   let states = store.get_states()
   div(class_name=@respo.ui_global, style=respo_style(padding=12 |> Px), [
     comp_fractional_index_demo(states.pick("fractional_demo")),

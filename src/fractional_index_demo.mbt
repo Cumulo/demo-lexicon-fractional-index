@@ -178,22 +178,14 @@ fn comp_fractional_index_demo(
   }
 
   // Drag end - 清除拖拽状态
+  // 注意：drop 事件会在 drag end 之前触发并清除状态
+  // 所以这里检查如果 dragging_cup_id 已经是 None，就不再设置状态
   let on_drag_end = fn(
     _e : RespoEvent,
-    dispatch : DispatchFn[ActionOp],
+    _dispatch : DispatchFn[ActionOp],
   ) -> Unit raise @respo_node.RespoCommonError {
-    let current_cups = if state.cups.is_empty() {
-      initial_cups()
-    } else {
-      state.cups
-    }
-    let next_state : DemoState = {
-      cups: current_cups,
-      next_shuffle_seed: state.next_shuffle_seed,
-      dragging_cup_id: None,
-      drop_target_idx: None,
-    }
-    dispatch.set_state(cursor, next_state)
+    // drop 事件已经处理了状态更新，这里不需要做任何事
+    // 避免用旧的闭包数据覆盖 drop 设置的新状态
   }
 
   // Drag over - 允许放置
