@@ -18,39 +18,31 @@ struct DemoState {
 } derive(Default, ToJson, @json.FromJson)
 
 ///|
-// 初始的三个碗
+// 初始的三个碗，使用 lexicon key_between 生成初始 key
 fn initial_cups() -> Array[Cup] {
+  // 使用 lexicon 生成 3 个初始 key
+  let keys = @lexicon.n_keys_between(None, None, 3) catch {
+    _ => ["a0", "a1", "a2"]
+  }
   [
-    { id: "cup-red", key: "a", color: "red" },
-    { id: "cup-green", key: "m", color: "green" },
-    { id: "cup-blue", key: "z", color: "blue" },
+    { id: "cup-red", key: keys[0], color: "red" },
+    { id: "cup-green", key: keys[1], color: "green" },
+    { id: "cup-blue", key: keys[2], color: "blue" },
   ]
 }
 
 ///|
-// 生成介于两个 key 之间的新 key
+// 使用 lexicon 生成介于两个 key 之间的新 key
 fn generate_key_between(before : String?, after : String?) -> String {
-  match (before, after) {
-    (None, None) => "m"
-    (None, Some(a)) =>
-      // 在最前面插入
-      if a.length() > 0 {
-        let first_char = a.get_char(0)
-        match first_char {
-          Some(c) if c > 'a' =>
-            // 用前一个字符
-            (c.to_int() - 1).unsafe_to_char().to_string()
-          _ => "a" + "m" // 加后缀
-        }
-      } else {
-        "a"
+  @lexicon.key_between(before, after) catch {
+    _ =>
+      // fallback
+      match (before, after) {
+        (None, None) => "a0"
+        (Some(b), None) => b + "V"
+        (None, Some(_)) => "a0"
+        (Some(b), Some(_)) => b + "V"
       }
-    (Some(b), None) =>
-      // 在最后面插入
-      b + "m"
-    (Some(b), Some(_a)) =>
-      // 在中间插入
-      b + "n"
   }
 }
 
@@ -86,9 +78,9 @@ fn comp_fractional_index_demo(
   // 初始化碗
   let cups = if state.cups.is_empty() { initial_cups() } else { state.cups }
 
-  // 按 key 排序的碗列表
+  // 按 key 排序的碗列表（使用 lexical_compare 进行字典序比较）
   let sorted_cups = cups.copy()
-  sorted_cups.sort_by(fn(a, b) { a.key.compare(b.key) })
+  sorted_cups.sort_by(fn(a, b) { a.key.lexical_compare(b.key) })
 
   // 随机移动一个碗
   let on_shuffle = fn(
@@ -101,23 +93,24 @@ fn comp_fractional_index_demo(
       let cup_index = pseudo_random(seed, cups.length())
       let cup = sorted_cups[cup_index]
 
-      // 随机选择目标位置 (不同于当前位置)
-      let mut target_pos = pseudo_random(seed + 1, cups.length())
-      if target_pos == cup_index && cups.length() > 1 {
-        target_pos = (target_pos + 1) % cups.length()
-      }
+      // 构建不包含被选中碗的排序列表
+      let other_cups : Array[Cup] = sorted_cups.filter(fn(c) { c.id != cup.id })
 
-      // 计算新的 key
+      // 随机选择目标位置 (在 other_cups 中的插入位置)
+      // 插入位置范围是 0 到 other_cups.length()
+      let target_pos = pseudo_random(seed + 1, other_cups.length() + 1)
+
+      // 计算新的 key（基于排除了被选中碗的列表）
       let (before_key, after_key) : (String?, String?) = if target_pos == 0 {
         // 移动到最前面
-        (None, Some(sorted_cups[0].key))
-      } else if target_pos >= cups.length() - 1 {
+        (None, Some(other_cups[0].key))
+      } else if target_pos >= other_cups.length() {
         // 移动到最后面
-        (Some(sorted_cups[cups.length() - 1].key), None)
+        (Some(other_cups[other_cups.length() - 1].key), None)
       } else {
         // 移动到中间
-        let bk = sorted_cups[target_pos - 1].key
-        let ak = sorted_cups[target_pos].key
+        let bk = other_cups[target_pos - 1].key
+        let ak = other_cups[target_pos].key
         (Some(bk), Some(ak))
       }
       let new_key = generate_key_between(before_key, after_key)
@@ -234,11 +227,12 @@ fn comp_fractional_index_demo(
     ) -> Unit raise @respo_node.RespoCommonError {
       if e is Drag(original_event~, ..) {
         original_event.prevent_default()
-        let dragged_cup_id = state.dragging_cup_id
-        if dragged_cup_id is None {
+        // 从 dataTransfer 获取拖拽的碗 id（而不是从闭包状态）
+        let dt = original_event.data_transfer()
+        let dragged_id = dt.get_data("text/plain")
+        if dragged_id.is_empty() {
           return
         }
-        let dragged_id = dragged_cup_id.unwrap()
 
         // 找到被拖拽碗的当前位置
         let mut dragged_pos = 0
@@ -261,17 +255,28 @@ fn comp_fractional_index_demo(
           return
         }
 
-        // 计算新的 key
-        let (before_key, after_key) : (String?, String?) = if zone_idx == 0 {
-          // 放到最前面
-          (None, Some(sorted_cups[0].key))
-        } else if zone_idx >= sorted_cups.length() {
-          // 放到最后面
-          (Some(sorted_cups[sorted_cups.length() - 1].key), None)
+        // 构建不包含被拖拽碗的排序列表
+        let other_cups : Array[Cup] = sorted_cups.filter(fn(c) {
+          c.id != dragged_id
+        })
+        // 计算实际的插入位置：如果 zone_idx 在 dragged_pos 之后，需要减 1
+        let insert_idx = if zone_idx > dragged_pos {
+          zone_idx - 1
         } else {
-          // 放到中间：zone_idx-1 和 zone_idx 之间
-          let bk = sorted_cups[zone_idx - 1].key
-          let ak = sorted_cups[zone_idx].key
+          zone_idx
+        }
+
+        // 计算新的 key（基于排除了被拖拽碗的列表）
+        let (before_key, after_key) : (String?, String?) = if insert_idx == 0 {
+          // 放到最前面
+          (None, Some(other_cups[0].key))
+        } else if insert_idx >= other_cups.length() {
+          // 放到最后面
+          (Some(other_cups[other_cups.length() - 1].key), None)
+        } else {
+          // 放到中间：insert_idx-1 和 insert_idx 之间
+          let bk = other_cups[insert_idx - 1].key
+          let ak = other_cups[insert_idx].key
           (Some(bk), Some(ak))
         }
         let new_key = generate_key_between(before_key, after_key)
@@ -295,8 +300,11 @@ fn comp_fractional_index_demo(
     }
   }
 
-  // 创建放置区域元素
-  let make_drop_zone = fn(zone_idx : Int) -> RespoNode[ActionOp] {
+  // 创建放置区域元素，带有 left 位置
+  let make_drop_zone = fn(
+    zone_idx : Int,
+    left_px : Float,
+  ) -> RespoNode[ActionOp] {
     let is_active = state.drop_target_idx == Some(zone_idx)
     let bg_color : @css.CssColor = if is_active {
       Hsl(210, 90, 55) // 亮蓝色
@@ -308,6 +316,7 @@ fn comp_fractional_index_demo(
     let indicator_height : Float = if is_active { 100.0 } else { 70.0 }
     div(
       class_name=style_drop_zone,
+      style=respo_style(left=left_px |> Px),
       on_drag_over~,
       on_drag_enter=make_zone_drag_enter(zone_idx),
       on_drag_leave=on_zone_drag_leave,
@@ -325,20 +334,55 @@ fn comp_fractional_index_demo(
     )
   }
 
-  // 构建碗和放置区域交错的列表
-  let cups_with_zones : Array[RespoNode[ActionOp]] = []
-  // 第一个放置区域（最左边）
-  cups_with_zones.push(make_drop_zone(0))
+  // 布局常量
+  let cup_width : Float = 80.0
+  let zone_width : Float = 50.0 // 放置区域宽度
+  let start_offset : Float = 10.0 // 左侧起始偏移
+
+  // 构建碗位置映射：cup.id -> 在 sorted_cups 中的位置 (rank)
+  let cup_rank : Map[String, Int] = {}
   for idx, cup in sorted_cups {
+    cup_rank[cup.id] = idx
+  }
+
+  // 按 id 排序的碗列表 (DOM 顺序固定不变)
+  let cups_by_id = cups.copy()
+  cups_by_id.sort_by(fn(a, b) { a.id.compare(b.id) })
+
+  // 先渲染所有放置区域 (按位置排序)
+  let drop_zones : Array[RespoNode[ActionOp]] = []
+  for zone_idx = 0; zone_idx <= sorted_cups.length(); zone_idx = zone_idx + 1 {
+    let zone_left : Float = start_offset +
+      Float::from_int(zone_idx) * (cup_width + zone_width)
+    drop_zones.push(make_drop_zone(zone_idx, zone_left))
+  }
+
+  // 渲染所有碗 (DOM 顺序按 id 固定，位置由 left 控制)
+  let cup_elements : Array[RespoNode[ActionOp]] = []
+  for cup in cups_by_id {
     let cup_is_dragging = state.dragging_cup_id == Some(cup.id)
+    // 根据碗在 sorted_cups 中的 rank 计算 left 位置
+    let rank = cup_rank[cup.id]
+    let cup_left : Float = start_offset +
+      zone_width +
+      Float::from_int(rank) * (cup_width + zone_width)
     // 碗
-    cups_with_zones.push(
+    cup_elements.push(
       div(
         class_name=style_cup,
         draggable=true,
         on_drag_start=make_drag_start(cup),
         on_drag_end~,
-        style=respo_style(opacity=if cup_is_dragging { 0.4 } else { 1.0 }),
+        style=respo_style(
+          left=cup_left |> Px,
+          opacity=if cup_is_dragging { 0.4 } else { 1.0 },
+          // 拖拽中的碗不需要 transition
+          transition=if cup_is_dragging {
+            "none"
+          } else {
+            "left 0.3s ease, transform 0.2s ease"
+          },
+        ),
         [
           // 碗体
           div(
@@ -354,9 +398,12 @@ fn comp_fractional_index_demo(
         ],
       ),
     )
-    // 碗后面的放置区域
-    cups_with_zones.push(make_drop_zone(idx + 1))
   }
+
+  // 合并放置区域和碗元素
+  let cups_with_zones : Array[RespoNode[ActionOp]] = []
+  cups_with_zones.append(drop_zones)
+  cups_with_zones.append(cup_elements)
   div(class_name=style_container, [
     // 标题
     div([
@@ -429,7 +476,7 @@ let style_stage : String = @respo_node.static_style([
 
 ///|
 let style_cups_row : String = @respo_node.static_style([
-  ("&", respo_style(display=Flex, gap=Px(0), align_items=FlexEnd)),
+  ("&", respo_style(position=Relative, width=500 |> Px, height=150 |> Px)),
 ])
 
 ///|
@@ -437,6 +484,8 @@ let style_cup : String = @respo_node.static_style([
   (
     "&",
     respo_style(
+      position=Absolute,
+      bottom=0 |> Px,
       width=80 |> Px,
       height=120 |> Px,
       cursor=Pointer,
@@ -445,7 +494,7 @@ let style_cup : String = @respo_node.static_style([
       align_items=Center,
       justify_content=FlexEnd,
       padding_bottom=8 |> Px,
-      transition="transform 0.3s ease, box-shadow 0.2s ease",
+      transition="left 0.3s ease, transform 0.2s ease",
     ),
   ),
   ("&:hover", respo_style(transform=TranslateY(-10))),
@@ -494,13 +543,14 @@ let style_drop_zone : String = @respo_node.static_style([
   (
     "&",
     respo_style(
-      width=60 |> Px,
-      height=140 |> Px,
+      position=Absolute,
+      bottom=0 |> Px,
+      width=50 |> Px,
+      height=160 |> Px,
       display=Flex,
       align_items=Center,
       justify_content=Center,
-      transition="all 0.2s ease",
-    ),
+    ).add("z-index", "10"),
   ),
 ])
 

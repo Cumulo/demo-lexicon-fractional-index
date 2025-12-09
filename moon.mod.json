@@ -4,7 +4,8 @@
   "deps": {
     "tiye/respo": "0.1.3",
     "tiye/dom-ffi": "0.2.2",
-    "tiye/respo_css": "0.1.3"
+    "tiye/respo_css": "0.1.3",
+    "tiye/lexicon-fractional-index": "0.0.4"
   },
   "readme": "README.md",
   "repository": "",
