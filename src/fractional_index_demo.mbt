@@ -160,10 +160,17 @@ fn comp_fractional_index_demo(
         let dt = original_event.data_transfer()
         dt.set_data("text/plain", cup.id)
         dt.set_effect_allowed("move")
-        let next_state = DemoState::{
-          ..state,
-          cups,
+        // 获取最新的 cups
+        let current_cups = if state.cups.is_empty() {
+          initial_cups()
+        } else {
+          state.cups
+        }
+        let next_state : DemoState = {
+          cups: current_cups,
+          next_shuffle_seed: state.next_shuffle_seed,
           dragging_cup_id: Some(cup.id),
+          drop_target_idx: None,
         }
         dispatch.set_state(cursor, next_state)
       }
@@ -175,7 +182,17 @@ fn comp_fractional_index_demo(
     _e : RespoEvent,
     dispatch : DispatchFn[ActionOp],
   ) -> Unit raise @respo_node.RespoCommonError {
-    let next_state = DemoState::{ ..state, cups, dragging_cup_id: None }
+    let current_cups = if state.cups.is_empty() {
+      initial_cups()
+    } else {
+      state.cups
+    }
+    let next_state : DemoState = {
+      cups: current_cups,
+      next_shuffle_seed: state.next_shuffle_seed,
+      dragging_cup_id: None,
+      drop_target_idx: None,
+    }
     dispatch.set_state(cursor, next_state)
   }
 
@@ -200,9 +217,15 @@ fn comp_fractional_index_demo(
     ) -> Unit raise @respo_node.RespoCommonError {
       if e is Drag(original_event~, ..) {
         original_event.prevent_default()
-        let next_state = DemoState::{
-          ..state,
-          cups,
+        let current_cups = if state.cups.is_empty() {
+          initial_cups()
+        } else {
+          state.cups
+        }
+        let next_state : DemoState = {
+          cups: current_cups,
+          next_shuffle_seed: state.next_shuffle_seed,
+          dragging_cup_id: state.dragging_cup_id,
           drop_target_idx: Some(zone_idx),
         }
         dispatch.set_state(cursor, next_state)
@@ -215,7 +238,17 @@ fn comp_fractional_index_demo(
     _e : RespoEvent,
     dispatch : DispatchFn[ActionOp],
   ) -> Unit raise @respo_node.RespoCommonError {
-    let next_state = DemoState::{ ..state, cups, drop_target_idx: None }
+    let current_cups = if state.cups.is_empty() {
+      initial_cups()
+    } else {
+      state.cups
+    }
+    let next_state : DemoState = {
+      cups: current_cups,
+      next_shuffle_seed: state.next_shuffle_seed,
+      dragging_cup_id: state.dragging_cup_id,
+      drop_target_idx: None,
+    }
     dispatch.set_state(cursor, next_state)
   }
 
@@ -225,70 +258,105 @@ fn comp_fractional_index_demo(
       e : RespoEvent,
       dispatch : DispatchFn[ActionOp],
     ) -> Unit raise @respo_node.RespoCommonError {
+      @dom_ffi.log("drop event triggered, zone_idx: " + zone_idx.to_string())
       if e is Drag(original_event~, ..) {
+        @dom_ffi.log("matched Drag event")
         original_event.prevent_default()
-        // 从 dataTransfer 获取拖拽的碗 id（而不是从闭包状态）
+
+        // 从 dataTransfer 获取拖拽的碗 id
         let dt = original_event.data_transfer()
         let dragged_id = dt.get_data("text/plain")
+        @dom_ffi.log("dragged_id: '" + dragged_id + "'")
         if dragged_id.is_empty() {
+          @dom_ffi.log("dragged_id is empty, returning early")
           return
         }
 
+        // 重新从 state 获取 cups（避免闭包捕获旧值的问题）
+        let current_cups = if state.cups.is_empty() {
+          initial_cups()
+        } else {
+          state.cups
+        }
+
+        // 重新计算排序
+        let current_sorted = current_cups.copy()
+        current_sorted.sort_by(fn(a, b) { a.key.lexical_compare(b.key) })
+
         // 找到被拖拽碗的当前位置
         let mut dragged_pos = 0
-        for i = 0; i < sorted_cups.length(); i = i + 1 {
-          if sorted_cups[i].id == dragged_id {
+        for i = 0; i < current_sorted.length(); i = i + 1 {
+          if current_sorted[i].id == dragged_id {
             dragged_pos = i
             break
           }
         }
+        @dom_ffi.log(
+          "dragged_pos: " +
+          dragged_pos.to_string() +
+          ", zone_idx: " +
+          zone_idx.to_string(),
+        )
+        let is_adjacent = zone_idx == dragged_pos || zone_idx == dragged_pos + 1
+        @dom_ffi.log("is_adjacent: " + is_adjacent.to_string())
 
         // 如果放到自己的相邻位置，不需要移动
-        if zone_idx == dragged_pos || zone_idx == dragged_pos + 1 {
-          let next_state = DemoState::{
-            ..state,
-            cups,
+        if is_adjacent {
+          @dom_ffi.log("adjacent position, skipping move")
+          let next_state : DemoState = {
+            cups: current_cups,
+            next_shuffle_seed: state.next_shuffle_seed,
             dragging_cup_id: None,
             drop_target_idx: None,
           }
           dispatch.set_state(cursor, next_state)
           return
         }
+        @dom_ffi.log("proceeding with move...")
 
         // 构建不包含被拖拽碗的排序列表
-        let other_cups : Array[Cup] = sorted_cups.filter(fn(c) {
+        let other_cups : Array[Cup] = current_sorted.filter(fn(c) {
           c.id != dragged_id
         })
+        @dom_ffi.log("other_cups length: " + other_cups.length().to_string())
+
         // 计算实际的插入位置：如果 zone_idx 在 dragged_pos 之后，需要减 1
         let insert_idx = if zone_idx > dragged_pos {
           zone_idx - 1
         } else {
           zone_idx
         }
+        @dom_ffi.log("insert_idx: " + insert_idx.to_string())
 
         // 计算新的 key（基于排除了被拖拽碗的列表）
         let (before_key, after_key) : (String?, String?) = if insert_idx == 0 {
           // 放到最前面
+          @dom_ffi.log("case: insert at front")
           (None, Some(other_cups[0].key))
         } else if insert_idx >= other_cups.length() {
           // 放到最后面
+          @dom_ffi.log("case: insert at end")
           (Some(other_cups[other_cups.length() - 1].key), None)
         } else {
           // 放到中间：insert_idx-1 和 insert_idx 之间
+          @dom_ffi.log("case: insert in middle")
           let bk = other_cups[insert_idx - 1].key
           let ak = other_cups[insert_idx].key
           (Some(bk), Some(ak))
         }
+        @dom_ffi.log("generating new key...")
         let new_key = generate_key_between(before_key, after_key)
+        @dom_ffi.log("new_key: " + new_key)
 
         // 更新碗的 key
-        let new_cups = cups.map(fn(c) {
+        let new_cups = current_cups.map(fn(c) {
           if c.id == dragged_id {
             { ..c, key: new_key }
           } else {
             c
           }
         })
+        @dom_ffi.log("setting state with new cups...")
         let next_state = DemoState::{
           cups: new_cups,
           next_shuffle_seed: state.next_shuffle_seed + 1,
@@ -296,24 +364,49 @@ fn comp_fractional_index_demo(
           drop_target_idx: None,
         }
         dispatch.set_state(cursor, next_state)
+        @dom_ffi.log("state set done")
       }
     }
   }
 
   // 创建放置区域元素，带有 left 位置
+  // dragging_rank: 正在拖拽的碗在 sorted_cups 中的位置，用于判断是否是无效放置位置
   let make_drop_zone = fn(
     zone_idx : Int,
     left_px : Float,
+    dragging_rank : Int?,
   ) -> RespoNode[ActionOp] {
     let is_active = state.drop_target_idx == Some(zone_idx)
+    // 判断是否是无效的放置位置（碗的相邻位置）
+    let is_invalid_zone = match dragging_rank {
+      Some(rank) => zone_idx == rank || zone_idx == rank + 1
+      None => false
+    }
     let bg_color : @css.CssColor = if is_active {
-      Hsl(210, 90, 55) // 亮蓝色
+      if is_invalid_zone {
+        Hsl(0, 0, 60) // 无效位置用暗灰色
+      } else {
+        Hsl(210, 90, 55) // 有效位置用亮蓝色
+      }
     } else if is_dragging {
-      Hsl(0, 0, 75) // 深灰色
+      if is_invalid_zone {
+        Hsl(0, 0, 90) // 无效位置用更浅的灰色
+      } else {
+        Hsl(0, 0, 75) // 深灰色
+      }
     } else {
       Hsl(0, 0, 85) // 浅灰色 - 始终可见
     }
-    let indicator_height : Float = if is_active { 100.0 } else { 70.0 }
+    let indicator_height : Float = if is_active && not(is_invalid_zone) {
+      120.0
+    } else {
+      90.0
+    }
+    let indicator_width : Float = if is_active && not(is_invalid_zone) {
+      12.0
+    } else {
+      6.0
+    }
     div(
       class_name=style_drop_zone,
       style=respo_style(left=left_px |> Px),
@@ -327,6 +420,7 @@ fn comp_fractional_index_demo(
           style=respo_style(
             background_color=bg_color,
             height=indicator_height |> Px,
+            width=indicator_width |> Px,
           ).add("pointer-events", "none"),
           [],
         ),
@@ -335,14 +429,22 @@ fn comp_fractional_index_demo(
   }
 
   // 布局常量
-  let cup_width : Float = 80.0
-  let zone_width : Float = 50.0 // 放置区域宽度
-  let start_offset : Float = 10.0 // 左侧起始偏移
+  let cup_width : Float = 90.0
+  let zone_width : Float = 40.0 // 放置区域宽度
+  let total_content_width = Float::from_int(cups.length()) * cup_width +
+    Float::from_int(cups.length() + 1) * zone_width
+  let start_offset : Float = (520.0 - total_content_width) / 2.0
 
   // 构建碗位置映射：cup.id -> 在 sorted_cups 中的位置 (rank)
   let cup_rank : Map[String, Int] = {}
   for idx, cup in sorted_cups {
     cup_rank[cup.id] = idx
+  }
+
+  // 获取正在拖拽的碗的 rank（用于判断无效放置位置）
+  let dragging_rank : Int? = match state.dragging_cup_id {
+    Some(id) => cup_rank.get(id)
+    None => None
   }
 
   // 按 id 排序的碗列表 (DOM 顺序固定不变)
@@ -354,7 +456,7 @@ fn comp_fractional_index_demo(
   for zone_idx = 0; zone_idx <= sorted_cups.length(); zone_idx = zone_idx + 1 {
     let zone_left : Float = start_offset +
       Float::from_int(zone_idx) * (cup_width + zone_width)
-    drop_zones.push(make_drop_zone(zone_idx, zone_left))
+    drop_zones.push(make_drop_zone(zone_idx, zone_left, dragging_rank))
   }
 
   // 渲染所有碗 (DOM 顺序按 id 固定，位置由 left 控制)
@@ -382,19 +484,16 @@ fn comp_fractional_index_demo(
           } else {
             "left 0.3s ease, transform 0.2s ease"
           },
-        ),
+        )
+        // 拖拽时禁用 pointer-events，让 drop zone 更容易被命中
+        .add("pointer-events", if cup_is_dragging { "none" } else { "auto" }),
         [
-          // 碗体
+          // 碗体（包含 key 标签在中间）
           div(
             class_name=style_cup_body,
-            style=respo_style(
-              background_color=get_cup_bg_color(cup.color),
-              box_shadow="inset 0 -20px 30px rgba(0,0,0,0.3)",
-            ),
-            [],
+            style=respo_style(background_color=get_cup_bg_color(cup.color)),
+            [div(class_name=style_key_label, [text_node("\{cup.key}")])],
           ),
-          // Key 标签
-          div(class_name=style_key_label, [text_node("key: \{cup.key}")]),
         ],
       ),
     )
@@ -447,7 +546,7 @@ let style_container : String = @respo_node.static_style([
   (
     "&",
     respo_style(
-      padding=20 |> Px,
+      padding=24 |> Px,
       display=Flex,
       flex_direction=Column,
       align_items=Center,
@@ -461,22 +560,25 @@ let style_stage : String = @respo_node.static_style([
     "&",
     respo_style(
       position=Relative,
-      width=500 |> Px,
-      height=300 |> Px,
-      background_color=Hsl(30, 20, 95),
-      border_radius=8.0,
+      width=560 |> Px,
+      height=200 |> Px,
+      background_color=Hsl(28, 24, 96),
+      border_radius=14.0,
       margin_top=20 |> Px,
       display=Flex,
       justify_content=Center,
-      align_items=FlexEnd,
-      padding_bottom=40 |> Px,
+      align_items=FlexEnd, // Align to bottom
+      padding_bottom=20 |> Px,
+      box_shadow="0 12px 28px rgba(0,0,0,0.08)",
+    ).add(
+      "background-image", "radial-gradient(circle at 50% 35%, rgba(255,255,255,0.9), rgba(240,236,230,0.6) 55%, rgba(232,228,222,0.6) 100%)",
     ),
   ),
 ])
 
 ///|
 let style_cups_row : String = @respo_node.static_style([
-  ("&", respo_style(position=Relative, width=500 |> Px, height=150 |> Px)),
+  ("&", respo_style(position=Relative, width=520 |> Px, height=140 |> Px)),
 ])
 
 ///|
@@ -486,35 +588,56 @@ let style_cup : String = @respo_node.static_style([
     respo_style(
       position=Absolute,
       bottom=0 |> Px,
-      width=80 |> Px,
-      height=120 |> Px,
+      width=90 |> Px,
+      height=110 |> Px,
       cursor=Pointer,
       display=Flex,
       flex_direction=Column,
       align_items=Center,
       justify_content=FlexEnd,
-      padding_bottom=8 |> Px,
+      padding_bottom=6 |> Px,
       transition="left 0.3s ease, transform 0.2s ease",
     ),
   ),
-  ("&:hover", respo_style(transform=TranslateY(-10))),
+  ("&:hover", respo_style(transform=TranslateY(-8))),
 ])
 
 ///|
 let style_cup_body : String = @respo_node.static_style([
-  ("&", respo_style(width=70 |> Px, height=90 |> Px, border_radius=8.0)),
+  (
+    "&",
+    respo_style(
+      width=80 |> Px,
+      height=90 |> Px,
+      border_radius=10.0,
+      display=Flex,
+      align_items=Center,
+      justify_content=Center,
+    )
+    .add("border-bottom-left-radius", "32px")
+    .add("border-bottom-right-radius", "32px")
+    .add("border-top-left-radius", "8px")
+    .add("border-top-right-radius", "8px")
+    .add("clip-path", "polygon(20% 8%, 80% 8%, 90% 100%, 10% 100%)")
+    .add(
+      "box-shadow", "inset 0 -16px 26px rgba(0,0,0,0.32), inset 0 6px 10px rgba(255,255,255,0.22), 0 10px 18px rgba(0,0,0,0.12)",
+    )
+    .add(
+      "background-image", "linear-gradient(145deg, rgba(255,255,255,0.18), rgba(0,0,0,0.08) 55%, rgba(0,0,0,0.22))",
+    ),
+  ),
 ])
 
 ///|
 let style_key_label : String = @respo_node.static_style([
   (
     "&",
-    respo_style(
-      font_size=12,
-      color=Hsl(0, 0, 40),
-      margin_top=8 |> Px,
-      font_family="monospace",
-    ),
+    respo_style(font_size=20, color=Hsl(0, 0, 100), font_family="monospace")
+    .add("font-weight", "900")
+    .add(
+      "text-shadow", "0 1px 3px rgba(0,0,0,0.7), 0 0 10px rgba(0,0,0,0.35), 0 0 18px rgba(0,0,0,0.25)",
+    )
+    .add("letter-spacing", "0.7px"),
   ),
 ])
 
@@ -523,11 +646,12 @@ let style_info_panel : String = @respo_node.static_style([
   (
     "&",
     respo_style(
-      margin_top=20 |> Px,
-      padding=16 |> Px,
-      background_color=Hsl(0, 0, 98),
-      border_radius=8.0,
-      min_width=400 |> Px,
+      margin_top=14 |> Px,
+      padding=12 |> Px,
+      background_color=Hsl(0, 0, 99),
+      border_radius=10.0,
+      min_width=380 |> Px,
+      color=Hsl(0, 0, 38),
     ),
   ),
 ])
@@ -545,8 +669,8 @@ let style_drop_zone : String = @respo_node.static_style([
     respo_style(
       position=Absolute,
       bottom=0 |> Px,
-      width=50 |> Px,
-      height=160 |> Px,
+      width=40 |> Px,
+      height=130 |> Px,
       display=Flex,
       align_items=Center,
       justify_content=Center,
@@ -555,15 +679,15 @@ let style_drop_zone : String = @respo_node.static_style([
 ])
 
 ///|
-// 放置区域内的指示线
+// 放置区域内的指示线 - 宽度和高度由动态样式控制
 let style_drop_indicator : String = @respo_node.static_style([
   (
     "&",
     respo_style(
-      width=8 |> Px,
-      height=80 |> Px,
+      width=6 |> Px,
+      height=90 |> Px,
       border_radius=4.0,
-      transition="all 0.2s ease",
+      transition="all 0.15s ease",
     ),
   ),
 ])
