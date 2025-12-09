@@ -15,12 +15,6 @@ using @respo_node {
 ///|
 
 ///|
-
-///|
-
-///|
-
-///|
 let app_store_key : String = "mbt-workflow"
 
 ///|

@@ -18,130 +18,6 @@ struct DemoState {
 } derive(Default, ToJson, @json.FromJson)
 
 ///|
-// 静态样式定义
-let style_container : String = @respo_node.static_style([
-  (
-    "&",
-    respo_style(
-      padding=20 |> Px,
-      display=Flex,
-      flex_direction=Column,
-      align_items=Center,
-    ),
-  ),
-])
-
-///|
-let style_stage : String = @respo_node.static_style([
-  (
-    "&",
-    respo_style(
-      position=Relative,
-      width=500 |> Px,
-      height=300 |> Px,
-      background_color=Hsl(30, 20, 95),
-      border_radius=8.0,
-      margin_top=20 |> Px,
-      display=Flex,
-      justify_content=Center,
-      align_items=FlexEnd,
-      padding_bottom=40 |> Px,
-    ),
-  ),
-])
-
-///|
-let style_cups_row : String = @respo_node.static_style([
-  ("&", respo_style(display=Flex, gap=Px(0), align_items=FlexEnd)),
-])
-
-///|
-let style_cup : String = @respo_node.static_style([
-  (
-    "&",
-    respo_style(
-      width=80 |> Px,
-      height=120 |> Px,
-      cursor=Pointer,
-      display=Flex,
-      flex_direction=Column,
-      align_items=Center,
-      justify_content=FlexEnd,
-      padding_bottom=8 |> Px,
-      transition="transform 0.3s ease, box-shadow 0.2s ease",
-    ),
-  ),
-  ("&:hover", respo_style(transform=TranslateY(-10))),
-])
-
-///|
-let style_cup_body : String = @respo_node.static_style([
-  ("&", respo_style(width=70 |> Px, height=90 |> Px, border_radius=8.0)),
-])
-
-///|
-let style_key_label : String = @respo_node.static_style([
-  (
-    "&",
-    respo_style(
-      font_size=12,
-      color=Hsl(0, 0, 40),
-      margin_top=8 |> Px,
-      font_family="monospace",
-    ),
-  ),
-])
-
-///|
-let style_info_panel : String = @respo_node.static_style([
-  (
-    "&",
-    respo_style(
-      margin_top=20 |> Px,
-      padding=16 |> Px,
-      background_color=Hsl(0, 0, 98),
-      border_radius=8.0,
-      min_width=400 |> Px,
-    ),
-  ),
-])
-
-///|
-let style_button_row : String = @respo_node.static_style([
-  ("&", respo_style(display=Flex, gap=Px(12), margin_top=16 |> Px)),
-])
-
-///|
-// 放置区域样式 - 碗之间的间隙，足够宽以便容易命中
-let style_drop_zone : String = @respo_node.static_style([
-  (
-    "&",
-    respo_style(
-      width=60 |> Px,
-      height=140 |> Px,
-      display=Flex,
-      align_items=Center,
-      justify_content=Center,
-      transition="all 0.2s ease",
-    ),
-  ),
-])
-
-///|
-// 放置区域内的指示线
-let style_drop_indicator : String = @respo_node.static_style([
-  (
-    "&",
-    respo_style(
-      width=8 |> Px,
-      height=80 |> Px,
-      border_radius=4.0,
-      transition="all 0.2s ease",
-    ),
-  ),
-])
-
-///|
 // 初始的三个碗
 fn initial_cups() -> Array[Cup] {
   [
@@ -198,6 +74,8 @@ fn pseudo_random(seed : Int, max : Int) -> Int {
   let next = (a * seed + c) % m
   (next % max).abs()
 }
+
+// View
 
 ///|
 fn comp_fractional_index_demo(
@@ -513,3 +391,129 @@ fn comp_fractional_index_demo(
     ]),
   ])
 }
+
+// styles
+
+///|
+// 静态样式定义
+let style_container : String = @respo_node.static_style([
+  (
+    "&",
+    respo_style(
+      padding=20 |> Px,
+      display=Flex,
+      flex_direction=Column,
+      align_items=Center,
+    ),
+  ),
+])
+
+///|
+let style_stage : String = @respo_node.static_style([
+  (
+    "&",
+    respo_style(
+      position=Relative,
+      width=500 |> Px,
+      height=300 |> Px,
+      background_color=Hsl(30, 20, 95),
+      border_radius=8.0,
+      margin_top=20 |> Px,
+      display=Flex,
+      justify_content=Center,
+      align_items=FlexEnd,
+      padding_bottom=40 |> Px,
+    ),
+  ),
+])
+
+///|
+let style_cups_row : String = @respo_node.static_style([
+  ("&", respo_style(display=Flex, gap=Px(0), align_items=FlexEnd)),
+])
+
+///|
+let style_cup : String = @respo_node.static_style([
+  (
+    "&",
+    respo_style(
+      width=80 |> Px,
+      height=120 |> Px,
+      cursor=Pointer,
+      display=Flex,
+      flex_direction=Column,
+      align_items=Center,
+      justify_content=FlexEnd,
+      padding_bottom=8 |> Px,
+      transition="transform 0.3s ease, box-shadow 0.2s ease",
+    ),
+  ),
+  ("&:hover", respo_style(transform=TranslateY(-10))),
+])
+
+///|
+let style_cup_body : String = @respo_node.static_style([
+  ("&", respo_style(width=70 |> Px, height=90 |> Px, border_radius=8.0)),
+])
+
+///|
+let style_key_label : String = @respo_node.static_style([
+  (
+    "&",
+    respo_style(
+      font_size=12,
+      color=Hsl(0, 0, 40),
+      margin_top=8 |> Px,
+      font_family="monospace",
+    ),
+  ),
+])
+
+///|
+let style_info_panel : String = @respo_node.static_style([
+  (
+    "&",
+    respo_style(
+      margin_top=20 |> Px,
+      padding=16 |> Px,
+      background_color=Hsl(0, 0, 98),
+      border_radius=8.0,
+      min_width=400 |> Px,
+    ),
+  ),
+])
+
+///|
+let style_button_row : String = @respo_node.static_style([
+  ("&", respo_style(display=Flex, gap=Px(12), margin_top=16 |> Px)),
+])
+
+///|
+// 放置区域样式 - 碗之间的间隙，足够宽以便容易命中
+let style_drop_zone : String = @respo_node.static_style([
+  (
+    "&",
+    respo_style(
+      width=60 |> Px,
+      height=140 |> Px,
+      display=Flex,
+      align_items=Center,
+      justify_content=Center,
+      transition="all 0.2s ease",
+    ),
+  ),
+])
+
+///|
+// 放置区域内的指示线
+let style_drop_indicator : String = @respo_node.static_style([
+  (
+    "&",
+    respo_style(
+      width=8 |> Px,
+      height=80 |> Px,
+      border_radius=4.0,
+      transition="all 0.2s ease",
+    ),
+  ),
+])
