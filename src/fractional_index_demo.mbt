@@ -3,6 +3,26 @@
 // Demonstrates fractional indexing with animated cup shuffling
 
 ///|
+// 注入下落动画的 CSS keyframes
+extern "js" fn inject_drop_animation_css() -> Unit =
+  #| () => {
+  #|   if (!document.getElementById('drop-animation-style')) {
+  #|     const style = document.createElement('style');
+  #|     style.id = 'drop-animation-style';
+  #|     style.textContent = `
+  #|       @keyframes cup-drop {
+  #|         0% { transform: translateY(-40px); }
+  #|         100% { transform: translateY(0); }
+  #|       }
+  #|       .cup-dropping {
+  #|         animation: cup-drop 0.3s ease-out forwards;
+  #|       }
+  #|     `;
+  #|     document.head.appendChild(style);
+  #|   }
+  #| }
+
+///|
 struct Cup {
   id : String
   key : String // 字典序 key，用于排序
@@ -15,6 +35,7 @@ struct DemoState {
   next_shuffle_seed : Int // 用于生成伪随机
   dragging_cup_id : String? // 正在拖拽的碗 ID
   drop_target_idx : Int? // 悬停的放置目标位置索引
+  just_dropped_cup_id : String? // 刚刚放下的碗 ID，用于下落动画
 } derive(Default, ToJson, @json.FromJson)
 
 ///|
@@ -73,6 +94,9 @@ fn pseudo_random(seed : Int, max : Int) -> Int {
 fn comp_fractional_index_demo(
   states : @respo.RespoStatesTree,
 ) -> RespoNode[ActionOp] {
+  // 注入 CSS animation（只会执行一次）
+  inject_drop_animation_css()
+  
   let (state, cursor) : (DemoState, @respo_node.RespoCursor[DemoState]) = states.local_pair()
 
   // 初始化碗
@@ -129,6 +153,7 @@ fn comp_fractional_index_demo(
         next_shuffle_seed: seed + 7,
         dragging_cup_id: None,
         drop_target_idx: None,
+        just_dropped_cup_id: None,
       }
       dispatch.set_state(cursor, next_state)
     }
@@ -146,6 +171,7 @@ fn comp_fractional_index_demo(
         next_shuffle_seed: 42,
         dragging_cup_id: None,
         drop_target_idx: None,
+        just_dropped_cup_id: None,
       }
       dispatch.set_state(cursor, next_state)
     }
@@ -173,6 +199,7 @@ fn comp_fractional_index_demo(
           cups: current_cups,
           dragging_cup_id: Some(cup.id),
           drop_target_idx: None,
+          just_dropped_cup_id: None, // 清除之前的 drop 标记
         }
         dispatch.set_state(cursor, next_state)
       }
@@ -236,11 +263,7 @@ fn comp_fractional_index_demo(
     } else {
       state.cups
     }
-    let next_state = {
-      ..state,
-      cups: current_cups,
-      drop_target_idx: None,
-    }
+    let next_state = { ..state, cups: current_cups, drop_target_idx: None }
     dispatch.set_state(cursor, next_state)
   }
 
@@ -300,6 +323,7 @@ fn comp_fractional_index_demo(
             cups: current_cups,
             dragging_cup_id: None,
             drop_target_idx: None,
+            just_dropped_cup_id: None,
           }
           dispatch.set_state(cursor, next_state)
           return
@@ -355,9 +379,10 @@ fn comp_fractional_index_demo(
           next_shuffle_seed: state.next_shuffle_seed + 1,
           dragging_cup_id: None,
           drop_target_idx: None,
+          just_dropped_cup_id: Some(dragged_id), // 标记刚刚放下的碗及位置
         }
         dispatch.set_state(cursor, next_state)
-        @dom_ffi.log("state set done")
+        @dom_ffi.log("state set done with just_dropped_cup_id: " + dragged_id)
       }
     }
   }
@@ -456,27 +481,38 @@ fn comp_fractional_index_demo(
   let cup_elements : Array[RespoNode[ActionOp]] = []
   for cup in cups_by_id {
     let cup_is_dragging = state.dragging_cup_id == Some(cup.id)
+    let cup_just_dropped = state.just_dropped_cup_id == Some(cup.id)
     // 根据碗在 sorted_cups 中的 rank 计算 left 位置
     let rank = cup_rank[cup.id]
     let cup_left : Float = start_offset +
       zone_width +
       Float::from_int(rank) * (cup_width + zone_width)
+    // 计算 transition：
+    // - 正在拖拽的碗：无动画
+    // - 刚刚放下的碗：无动画（用 CSS animation 实现下落）
+    // - 其他碗：400ms 动画
+    let cup_transition = if cup_is_dragging || cup_just_dropped {
+      "none"
+    } else {
+      "left 0.4s ease, transform 0.2s ease"
+    }
+    // 刚放下的碗使用 CSS animation class
+    let cup_class = if cup_just_dropped {
+      style_cup + " cup-dropping"
+    } else {
+      style_cup
+    }
     // 碗
     cup_elements.push(
       div(
-        class_name=style_cup,
+        class_name=cup_class,
         draggable=true,
         on_drag_start=make_drag_start(cup),
         on_drag_end~,
         style=respo_style(
           left=cup_left |> Px,
           opacity=if cup_is_dragging { 0.4 } else { 1.0 },
-          // 拖拽中的碗不需要 transition
-          transition=if cup_is_dragging {
-            "none"
-          } else {
-            "left 0.3s ease, transform 0.2s ease"
-          },
+          transition=cup_transition,
         )
         // 拖拽时禁用 pointer-events，让 drop zone 更容易被命中
         .add("pointer-events", if cup_is_dragging { "none" } else { "auto" }),
