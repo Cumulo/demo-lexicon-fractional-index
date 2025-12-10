@@ -123,7 +123,8 @@ fn comp_fractional_index_demo(
           c
         }
       })
-      let next_state = DemoState::{
+      let next_state = {
+        ..state,
         cups: new_cups,
         next_shuffle_seed: seed + 7,
         dragging_cup_id: None,
@@ -139,7 +140,8 @@ fn comp_fractional_index_demo(
     dispatch : DispatchFn[ActionOp],
   ) -> Unit raise @respo_node.RespoCommonError {
     if e is Click(..) {
-      let next_state = DemoState::{
+      let next_state = {
+        ..state,
         cups: initial_cups(),
         next_shuffle_seed: 42,
         dragging_cup_id: None,
@@ -166,9 +168,9 @@ fn comp_fractional_index_demo(
         } else {
           state.cups
         }
-        let next_state : DemoState = {
+        let next_state = {
+          ..state,
           cups: current_cups,
-          next_shuffle_seed: state.next_shuffle_seed,
           dragging_cup_id: Some(cup.id),
           drop_target_idx: None,
         }
@@ -214,10 +216,9 @@ fn comp_fractional_index_demo(
         } else {
           state.cups
         }
-        let next_state : DemoState = {
+        let next_state = {
+          ..state,
           cups: current_cups,
-          next_shuffle_seed: state.next_shuffle_seed,
-          dragging_cup_id: state.dragging_cup_id,
           drop_target_idx: Some(zone_idx),
         }
         dispatch.set_state(cursor, next_state)
@@ -235,10 +236,9 @@ fn comp_fractional_index_demo(
     } else {
       state.cups
     }
-    let next_state : DemoState = {
+    let next_state = {
+      ..state,
       cups: current_cups,
-      next_shuffle_seed: state.next_shuffle_seed,
-      dragging_cup_id: state.dragging_cup_id,
       drop_target_idx: None,
     }
     dispatch.set_state(cursor, next_state)
@@ -295,9 +295,9 @@ fn comp_fractional_index_demo(
         // 如果放到自己的相邻位置，不需要移动
         if is_adjacent {
           @dom_ffi.log("adjacent position, skipping move")
-          let next_state : DemoState = {
+          let next_state = {
+            ..state,
             cups: current_cups,
-            next_shuffle_seed: state.next_shuffle_seed,
             dragging_cup_id: None,
             drop_target_idx: None,
           }
@@ -349,7 +349,8 @@ fn comp_fractional_index_demo(
           }
         })
         @dom_ffi.log("setting state with new cups...")
-        let next_state = DemoState::{
+        let next_state = {
+          ..state,
           cups: new_cups,
           next_shuffle_seed: state.next_shuffle_seed + 1,
           dragging_cup_id: None,
