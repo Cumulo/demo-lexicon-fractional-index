@@ -507,9 +507,9 @@ fn comp_fractional_index_demo(
       90.0
     }
     let indicator_width : Float = if is_active && not(is_invalid_zone) {
-      12.0
+      18.0
     } else {
-      6.0
+      10.0
     }
     div(
       class_name=style_drop_zone,
@@ -533,11 +533,11 @@ fn comp_fractional_index_demo(
   }
 
   // 布局常量
-  let cup_width : Float = 90.0
-  let zone_width : Float = 40.0 // 放置区域宽度
+  let cup_width : Float = 180.0
+  let zone_width : Float = 60.0 // 放置区域宽度
   let total_content_width = Float::from_int(cups.length()) * cup_width +
     Float::from_int(cups.length() + 1) * zone_width
-  let start_offset : Float = (520.0 - total_content_width) / 2.0
+  let start_offset : Float = (800.0 - total_content_width) / 2.0
 
   // 构建碗位置映射：cup.id -> 在 sorted_cups 中的位置 (rank)
   let cup_rank : Map[String, Int] = {}
@@ -664,11 +664,17 @@ fn comp_fractional_index_demo(
     // 信息面板
     div(class_name=style_info_panel, [
       div([text_node("当前排序 (按 key 字典序):")]),
-      div(style=respo_style(margin_top=8 |> Px, font_family="monospace"), [
-        text_node(
-          sorted_cups.map(fn(c) { "\{c.color}(\{c.key})" }).join(" → "),
+      div(
+        style=respo_style(
+          margin_top=8 |> Px,
+          font_family="Source Code Pro, monospace",
         ),
-      ]),
+        [
+          text_node(
+            sorted_cups.map(fn(c) { "\{c.color}(\{c.key})" }).join(" → "),
+          ),
+        ],
+      ),
       // 按钮行
       div(class_name=style_button_row, [
         button(
@@ -708,7 +714,7 @@ let style_stage : String = @respo_node.static_style([
     "&",
     respo_style(
       position=Relative,
-      width=560 |> Px,
+      width=860 |> Px,
       height=200 |> Px,
       background_color=Hsl(28, 24, 96),
       border_radius=14.0,
@@ -726,7 +732,7 @@ let style_stage : String = @respo_node.static_style([
 
 ///|
 let style_cups_row : String = @respo_node.static_style([
-  ("&", respo_style(position=Relative, width=520 |> Px, height=140 |> Px)),
+  ("&", respo_style(position=Relative, width=800 |> Px, height=140 |> Px)),
 ])
 
 ///|
@@ -736,7 +742,7 @@ let style_cup : String = @respo_node.static_style([
     respo_style(
       position=Absolute,
       bottom=0 |> Px,
-      width=90 |> Px,
+      width=180 |> Px,
       height=110 |> Px,
       cursor=Pointer,
       display=Flex,
@@ -755,7 +761,7 @@ let style_cup_body : String = @respo_node.static_style([
   (
     "&",
     respo_style(
-      width=80 |> Px,
+      width=160 |> Px,
       height=90 |> Px,
       border_radius=10.0,
       display=Flex,
@@ -764,9 +770,9 @@ let style_cup_body : String = @respo_node.static_style([
     )
     .add("border-bottom-left-radius", "32px")
     .add("border-bottom-right-radius", "32px")
-    .add("border-top-left-radius", "8px")
-    .add("border-top-right-radius", "8px")
-    .add("clip-path", "polygon(20% 8%, 80% 8%, 90% 100%, 10% 100%)")
+    .add("border-top-left-radius", "20px")
+    .add("border-top-right-radius", "20px")
+    .add("clip-path", "polygon(28% 0%, 72% 0%, 76% 10%, 88% 40%, 95% 80%, 98% 100%, 2% 100%, 5% 80%, 12% 40%, 24% 10%)")
     .add(
       "box-shadow", "inset 0 -16px 26px rgba(0,0,0,0.32), inset 0 6px 10px rgba(255,255,255,0.22), 0 10px 18px rgba(0,0,0,0.12)",
     )
@@ -780,7 +786,11 @@ let style_cup_body : String = @respo_node.static_style([
 let style_key_label : String = @respo_node.static_style([
   (
     "&",
-    respo_style(font_size=20, color=Hsl(0, 0, 100), font_family="monospace")
+    respo_style(
+      font_size=20,
+      color=Hsl(0, 0, 100),
+      font_family="Source Code Pro, monospace",
+    )
     .add("font-weight", "900")
     .add(
       "text-shadow", "0 1px 3px rgba(0,0,0,0.7), 0 0 10px rgba(0,0,0,0.35), 0 0 18px rgba(0,0,0,0.25)",
@@ -817,7 +827,7 @@ let style_drop_zone : String = @respo_node.static_style([
     respo_style(
       position=Absolute,
       bottom=0 |> Px,
-      width=40 |> Px,
+      width=60 |> Px,
       height=130 |> Px,
       display=Flex,
       align_items=Center,
@@ -832,7 +842,7 @@ let style_drop_indicator : String = @respo_node.static_style([
   (
     "&",
     respo_style(
-      width=6 |> Px,
+      width=10 |> Px,
       height=90 |> Px,
       border_radius=4.0,
       transition="all 0.15s ease",
