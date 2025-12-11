@@ -3,6 +3,18 @@
 // Demonstrates fractional indexing with animated cup shuffling
 
 ///|
+// 获取指定 cup id 元素的位置（返回 [left, top, width, height]）
+extern "js" fn get_cup_position(cup_id : String) -> (Int, Int) =
+  #| (cupId) => {
+  #|   // 查找包含该 cup 的元素，通过 data-cup-id 属性
+  #|   const el = document.querySelector(`[data-cup-id="${cupId}"]`);
+  #|   if (!el) return [0, 0];
+  #|   const rect = el.getBoundingClientRect();
+  #|   // 返回碗中心位置
+  #|   return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.height / 2)];
+  #| }
+
+///|
 // 注入下落动画的 CSS keyframes时使用动态偏移量
 extern "js" fn inject_drop_animation(offset_x : Int, offset_y : Int) -> Unit =
   #| (offsetX, offsetY) => {
@@ -74,26 +86,52 @@ impl ToJson for DemoState with to_json(self) {
 
 ///|
 impl @json.FromJson for DemoState with from_json(json, path) {
+  @dom_ffi.log("DemoState.from_json called with: " + json.stringify())
   guard json is Object(obj) else {
+    @dom_ffi.log("DemoState.from_json: not an object!")
     raise @json.JsonDecodeError((path, "DemoState: expected object"))
   }
-  let cups : Array[Cup] = obj
-    .get("cups")
-    .map(fn(v) { @json.from_json(v, path=path.add_key("cups")) })
-    .unwrap_or([])
-  let next_shuffle_seed : Int = obj
-    .get("next_shuffle_seed")
-    .map(fn(v) { @json.from_json(v, path=path.add_key("next_shuffle_seed")) })
-    .unwrap_or(0)
-  let dragging_cup_id : String? = obj
-    .get("dragging_cup_id")
-    .map(fn(v) { @json.from_json(v, path=path.add_key("dragging_cup_id")) })
-  let drop_target_idx : Int? = obj
-    .get("drop_target_idx")
-    .map(fn(v) { @json.from_json(v, path=path.add_key("drop_target_idx")) })
-  let just_dropped_cup_id : String? = obj
-    .get("just_dropped_cup_id")
-    .map(fn(v) { @json.from_json(v, path=path.add_key("just_dropped_cup_id")) })
+  let cups : Array[Cup] = try {
+    obj
+      .get("cups")
+      .map(fn(v) { @json.from_json(v, path=path.add_key("cups")) })
+      .unwrap_or([])
+  } catch {
+    e => {
+      @dom_ffi.log("DemoState.from_json: failed to parse cups: " + e.to_string())
+      []
+    }
+  }
+  let next_shuffle_seed : Int = try {
+    obj
+      .get("next_shuffle_seed")
+      .map(fn(v) { @json.from_json(v, path=path.add_key("next_shuffle_seed")) })
+      .unwrap_or(0)
+  } catch {
+    _ => 0
+  }
+  let dragging_cup_id : String? = try {
+    obj
+      .get("dragging_cup_id")
+      .map(fn(v) { @json.from_json(v, path=path.add_key("dragging_cup_id")) })
+  } catch {
+    _ => None
+  }
+  let drop_target_idx : Int? = try {
+    obj
+      .get("drop_target_idx")
+      .map(fn(v) { @json.from_json(v, path=path.add_key("drop_target_idx")) })
+  } catch {
+    _ => None
+  }
+  let just_dropped_cup_id : String? = try {
+    obj
+      .get("just_dropped_cup_id")
+      .map(fn(v) { @json.from_json(v, path=path.add_key("just_dropped_cup_id")) })
+  } catch {
+    _ => None
+  }
+  @dom_ffi.log("DemoState.from_json: parsed successfully")
   {
     cups,
     next_shuffle_seed,
@@ -134,12 +172,15 @@ fn generate_key_between(before : String?, after : String?) -> String {
 }
 
 ///|
-// 获取碗的背景颜色
+// 获取碗的背景颜色 - 基于 HSLuv 色彩空间选择，hue 相隔 120° 以获得最佳区分度
 fn get_cup_bg_color(color : String) -> @css.CssColor {
   match color {
-    "red" => Hsl(10, 70, 50)
-    "green" => Hsl(120, 60, 45)
-    "blue" => Hsl(240, 70, 50)
+    // HSLuv H=12, S=90, L=65 → 明亮珊瑚红
+    "red" => Hsl(12, 85, 58)
+    // HSLuv H=132, S=85, L=55 → 明亮翠绿
+    "green" => Hsl(145, 70, 48)
+    // HSLuv H=252, S=90, L=60 → 明亮天蓝
+    "blue" => Hsl(225, 75, 58)
     _ => Hsl(0, 0, 60)
   }
 }
@@ -564,8 +605,11 @@ fn comp_fractional_index_demo(
     if cup_just_dropped {
       // 从 state 的 Ref 读取鼠标位置
       let mouse_pos = state.drop_mouse_pos.val
-      let offset_x = mouse_pos.x - 280 - cup_left.to_int() - 45 // 280 是大约的舞台中心偏移
-      let offset_y = mouse_pos.y - 400 // 大约的碗位置 Y
+      // 获取碗在视口中的实际位置
+      let (cup_center_x, cup_center_y) = get_cup_position(cup.id)
+      // 计算偏移：鼠标位置 - 碗中心位置
+      let offset_x = mouse_pos.x - cup_center_x
+      let offset_y = mouse_pos.y - cup_center_y
       inject_drop_animation(offset_x, offset_y)
     }
 
@@ -597,7 +641,9 @@ fn comp_fractional_index_demo(
           transition=cup_transition,
         )
         // 拖拽时禁用 pointer-events，让 drop zone 更容易被命中
-        .add("pointer-events", if cup_is_dragging { "none" } else { "auto" }),
+        .add("pointer-events", if cup_is_dragging { "none" } else { "auto" })
+        // 添加 data-cup-id 以便 JS 获取元素位置
+        .add("data-cup-id", cup.id),
         [
           // 碗体（包含 key 标签在中间）
           div(
