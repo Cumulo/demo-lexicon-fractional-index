@@ -3,18 +3,6 @@
 // Demonstrates fractional indexing with animated cup shuffling
 
 ///|
-// 获取指定 cup id 元素的位置（返回 [left, top, width, height]）
-extern "js" fn get_cup_position(cup_id : String) -> (Int, Int) =
-  #| (cupId) => {
-  #|   // 查找包含该 cup 的元素，通过 data-cup-id 属性
-  #|   const el = document.querySelector(`[data-cup-id="${cupId}"]`);
-  #|   if (!el) return [0, 0];
-  #|   const rect = el.getBoundingClientRect();
-  #|   // 返回碗中心位置
-  #|   return [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.height / 2)];
-  #| }
-
-///|
 // 注入下落动画的 CSS keyframes时使用动态偏移量
 extern "js" fn inject_drop_animation(offset_x : Int, offset_y : Int) -> Unit =
   #| (offsetX, offsetY) => {
@@ -43,10 +31,9 @@ struct Cup {
 } derive(ToJson, @json.FromJson, Eq)
 
 ///|
-// 用于存储 drop 时的鼠标位置（不序列化，避免影响 state 比较和存储）
-struct DropMousePosition {
-  mut x : Int
-  mut y : Int
+// 用于存储 drop 动画数据（不序列化，避免影响 state 比较和存储）
+struct DropAnimationData {
+  mut drop_zone_idx : Int // drop 到哪个 zone
 }
 
 ///|
@@ -57,7 +44,7 @@ struct DemoState {
   drop_target_idx : Int? // 悬停的放置目标位置索引
   just_dropped_cup_id : String? // 刚刚放下的碗 ID，用于下落动画
   // 临时数据，不参与序列化
-  drop_mouse_pos : Ref[DropMousePosition]
+  drop_animation_data : Ref[DropAnimationData]
 }
 
 ///|
@@ -68,7 +55,7 @@ impl Default for DemoState with default() {
     dragging_cup_id: None,
     drop_target_idx: None,
     just_dropped_cup_id: None,
-    drop_mouse_pos: Ref::new({ x: 0, y: 0 }),
+    drop_animation_data: Ref::new({ drop_zone_idx: 0 }),
   }
 }
 
@@ -80,7 +67,7 @@ impl ToJson for DemoState with to_json(self) {
     "dragging_cup_id": self.dragging_cup_id.to_json(),
     "drop_target_idx": self.drop_target_idx.to_json(),
     "just_dropped_cup_id": self.just_dropped_cup_id.to_json(),
-    // drop_mouse_pos 不序列化
+    // drop_animation_data 不序列化
   }
 }
 
@@ -91,46 +78,38 @@ impl @json.FromJson for DemoState with from_json(json, path) {
     @dom_ffi.log("DemoState.from_json: not an object!")
     raise @json.JsonDecodeError((path, "DemoState: expected object"))
   }
-  let cups : Array[Cup] = try {
-    obj
-      .get("cups")
-      .map(fn(v) { @json.from_json(v, path=path.add_key("cups")) })
-      .unwrap_or([])
-  } catch {
-    e => {
-      @dom_ffi.log("DemoState.from_json: failed to parse cups: " + e.to_string())
-      []
+  let cups : Array[Cup] = obj
+    .get("cups")
+    .map(fn(v) { @json.from_json(v, path=path.add_key("cups")) })
+    .unwrap_or([]) catch {
+      e => {
+        @dom_ffi.log(
+          "DemoState.from_json: failed to parse cups: " + e.to_string(),
+        )
+        []
+      }
     }
-  }
-  let next_shuffle_seed : Int = try {
-    obj
-      .get("next_shuffle_seed")
-      .map(fn(v) { @json.from_json(v, path=path.add_key("next_shuffle_seed")) })
-      .unwrap_or(0)
-  } catch {
-    _ => 0
-  }
-  let dragging_cup_id : String? = try {
-    obj
-      .get("dragging_cup_id")
-      .map(fn(v) { @json.from_json(v, path=path.add_key("dragging_cup_id")) })
-  } catch {
-    _ => None
-  }
-  let drop_target_idx : Int? = try {
-    obj
-      .get("drop_target_idx")
-      .map(fn(v) { @json.from_json(v, path=path.add_key("drop_target_idx")) })
-  } catch {
-    _ => None
-  }
-  let just_dropped_cup_id : String? = try {
-    obj
-      .get("just_dropped_cup_id")
-      .map(fn(v) { @json.from_json(v, path=path.add_key("just_dropped_cup_id")) })
-  } catch {
-    _ => None
-  }
+  let next_shuffle_seed : Int = obj
+    .get("next_shuffle_seed")
+    .map(fn(v) { @json.from_json(v, path=path.add_key("next_shuffle_seed")) })
+    .unwrap_or(0) catch {
+      _ => 0
+    }
+  let dragging_cup_id : String? = obj
+    .get("dragging_cup_id")
+    .map(fn(v) { @json.from_json(v, path=path.add_key("dragging_cup_id")) }) catch {
+      _ => None
+    }
+  let drop_target_idx : Int? = obj
+    .get("drop_target_idx")
+    .map(fn(v) { @json.from_json(v, path=path.add_key("drop_target_idx")) }) catch {
+      _ => None
+    }
+  let just_dropped_cup_id : String? = obj
+    .get("just_dropped_cup_id")
+    .map(fn(v) { @json.from_json(v, path=path.add_key("just_dropped_cup_id")) }) catch {
+      _ => None
+    }
   @dom_ffi.log("DemoState.from_json: parsed successfully")
   {
     cups,
@@ -138,7 +117,7 @@ impl @json.FromJson for DemoState with from_json(json, path) {
     dragging_cup_id,
     drop_target_idx,
     just_dropped_cup_id,
-    drop_mouse_pos: Ref::new({ x: 0, y: 0 }),
+    drop_animation_data: Ref::new({ drop_zone_idx: 0 }),
   }
 }
 
@@ -477,15 +456,9 @@ fn comp_fractional_index_demo(
           }
         })
         @dom_ffi.log("setting state with new cups...")
-        // 获取鼠标位置并存入 state 的 Ref
-        state.drop_mouse_pos.val.x = original_event.client_x().to_int()
-        state.drop_mouse_pos.val.y = original_event.client_y().to_int()
-        @dom_ffi.log(
-          "mouse position: " +
-          state.drop_mouse_pos.val.x.to_string() +
-          ", " +
-          state.drop_mouse_pos.val.y.to_string(),
-        )
+        // 存储动画数据：drop zone 索引
+        state.drop_animation_data.val.drop_zone_idx = zone_idx
+        @dom_ffi.log("drop zone_idx: " + zone_idx.to_string())
         let next_state = {
           ..state,
           cups: new_cups,
@@ -596,20 +569,38 @@ fn comp_fractional_index_demo(
     let cup_is_dragging = state.dragging_cup_id == Some(cup.id)
     let cup_just_dropped = state.just_dropped_cup_id == Some(cup.id)
     // 根据碗在 sorted_cups 中的 rank 计算 left 位置
-    let rank = cup_rank[cup.id]
+    let rank = cup_rank.get(cup.id).unwrap_or(0)
     let cup_left : Float = start_offset +
       zone_width +
       Float::from_int(rank) * (cup_width + zone_width)
 
-    // 如果是刚放下的碗，计算从鼠标位置到最终位置的偏移并注入动画
+    // 如果是刚放下的碗，计算从 drop zone 位置到最终位置的偏移并注入动画
     if cup_just_dropped {
-      // 从 state 的 Ref 读取鼠标位置
-      let mouse_pos = state.drop_mouse_pos.val
-      // 获取碗在视口中的实际位置
-      let (cup_center_x, cup_center_y) = get_cup_position(cup.id)
-      // 计算偏移：鼠标位置 - 碗中心位置
-      let offset_x = mouse_pos.x - cup_center_x
-      let offset_y = mouse_pos.y - cup_center_y
+      // 从 state 的 Ref 读取动画数据
+      let anim_data = state.drop_animation_data.val
+      let drop_zone_idx = anim_data.drop_zone_idx
+      // drop zone 的中心 X 位置（相对于容器）
+      let zone_center_x : Float = start_offset +
+        Float::from_int(drop_zone_idx) * (cup_width + zone_width) +
+        zone_width / 2.0
+      // 碗的中心 X 位置（相对于容器）
+      let cup_center_x : Float = cup_left + cup_width / 2.0
+      // 偏移量 = drop zone 位置 - 碗最终位置（只需要 X 方向，Y 不变）
+      let offset_x = (zone_center_x - cup_center_x).to_int()
+      let offset_y = 0 // Y 方向不移动
+      @dom_ffi.log(
+        "animation: zone_center(" +
+        zone_center_x.to_string() +
+        ") - cup_center(" +
+        cup_center_x.to_string() +
+        ") = offset_x(" +
+        offset_x.to_string() +
+        ") [drop_zone_idx=" +
+        drop_zone_idx.to_string() +
+        ", new_rank=" +
+        rank.to_string() +
+        "]",
+      )
       inject_drop_animation(offset_x, offset_y)
     }
 
@@ -636,14 +627,14 @@ fn comp_fractional_index_demo(
         on_drag_start=make_drag_start(cup),
         on_drag_end~,
         style=respo_style(
-          left=cup_left |> Px,
-          opacity=if cup_is_dragging { 0.4 } else { 1.0 },
-          transition=cup_transition,
-        )
-        // 拖拽时禁用 pointer-events，让 drop zone 更容易被命中
-        .add("pointer-events", if cup_is_dragging { "none" } else { "auto" })
-        // 添加 data-cup-id 以便 JS 获取元素位置
-        .add("data-cup-id", cup.id),
+            left=cup_left |> Px,
+            opacity=if cup_is_dragging { 0.4 } else { 1.0 },
+            transition=cup_transition,
+          )
+          // 拖拽时禁用 pointer-events，让 drop zone 更容易被命中
+          .add("pointer-events", if cup_is_dragging { "none" } else { "auto" })
+          // 添加 data-cup-id 以便 JS 获取元素位置
+          .add("data-cup-id", cup.id),
         [
           // 碗体（包含 key 标签在中间）
           div(
