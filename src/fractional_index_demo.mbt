@@ -3,23 +3,24 @@
 // Demonstrates fractional indexing with animated cup shuffling
 
 ///|
-// 注入下落动画的 CSS keyframes
-extern "js" fn inject_drop_animation_css() -> Unit =
-  #| () => {
-  #|   if (!document.getElementById('drop-animation-style')) {
-  #|     const style = document.createElement('style');
+// 注入下落动画的 CSS keyframes时使用动态偏移量
+extern "js" fn inject_drop_animation(offset_x : Int, offset_y : Int) -> Unit =
+  #| (offsetX, offsetY) => {
+  #|   let style = document.getElementById('drop-animation-style');
+  #|   if (!style) {
+  #|     style = document.createElement('style');
   #|     style.id = 'drop-animation-style';
-  #|     style.textContent = `
-  #|       @keyframes cup-drop {
-  #|         0% { transform: translateY(-40px); }
-  #|         100% { transform: translateY(0); }
-  #|       }
-  #|       .cup-dropping {
-  #|         animation: cup-drop 0.3s ease-out forwards;
-  #|       }
-  #|     `;
   #|     document.head.appendChild(style);
   #|   }
+  #|   style.textContent = `
+  #|     @keyframes cup-drop {
+  #|       0% { transform: translate(${offsetX}px, ${offsetY}px); }
+  #|       100% { transform: translate(0, 0); }
+  #|     }
+  #|     .cup-dropping {
+  #|       animation: cup-drop 0.35s ease-out forwards;
+  #|     }
+  #|   `;
   #| }
 
 ///|
@@ -30,13 +31,78 @@ struct Cup {
 } derive(ToJson, @json.FromJson, Eq)
 
 ///|
+// 用于存储 drop 时的鼠标位置（不序列化，避免影响 state 比较和存储）
+struct DropMousePosition {
+  mut x : Int
+  mut y : Int
+}
+
+///|
 struct DemoState {
   cups : Array[Cup]
   next_shuffle_seed : Int // 用于生成伪随机
   dragging_cup_id : String? // 正在拖拽的碗 ID
   drop_target_idx : Int? // 悬停的放置目标位置索引
   just_dropped_cup_id : String? // 刚刚放下的碗 ID，用于下落动画
-} derive(Default, ToJson, @json.FromJson)
+  // 临时数据，不参与序列化
+  drop_mouse_pos : Ref[DropMousePosition]
+}
+
+///|
+impl Default for DemoState with default() {
+  {
+    cups: [],
+    next_shuffle_seed: 0,
+    dragging_cup_id: None,
+    drop_target_idx: None,
+    just_dropped_cup_id: None,
+    drop_mouse_pos: Ref::new({ x: 0, y: 0 }),
+  }
+}
+
+///|
+impl ToJson for DemoState with to_json(self) {
+  {
+    "cups": self.cups.to_json(),
+    "next_shuffle_seed": self.next_shuffle_seed.to_json(),
+    "dragging_cup_id": self.dragging_cup_id.to_json(),
+    "drop_target_idx": self.drop_target_idx.to_json(),
+    "just_dropped_cup_id": self.just_dropped_cup_id.to_json(),
+    // drop_mouse_pos 不序列化
+  }
+}
+
+///|
+impl @json.FromJson for DemoState with from_json(json, path) {
+  guard json is Object(obj) else {
+    raise @json.JsonDecodeError((path, "DemoState: expected object"))
+  }
+  let cups : Array[Cup] = obj
+    .get("cups")
+    .map(fn(v) { @json.from_json(v, path=path.add_key("cups")) })
+    .unwrap_or([])
+  let next_shuffle_seed : Int = obj
+    .get("next_shuffle_seed")
+    .map(fn(v) { @json.from_json(v, path=path.add_key("next_shuffle_seed")) })
+    .unwrap_or(0)
+  let dragging_cup_id : String? = obj
+    .get("dragging_cup_id")
+    .map(fn(v) { @json.from_json(v, path=path.add_key("dragging_cup_id")) })
+  let drop_target_idx : Int? = obj
+    .get("drop_target_idx")
+    .map(fn(v) { @json.from_json(v, path=path.add_key("drop_target_idx")) })
+  let just_dropped_cup_id : String? = obj
+    .get("just_dropped_cup_id")
+    .map(fn(v) { @json.from_json(v, path=path.add_key("just_dropped_cup_id")) })
+  {
+    cups,
+    next_shuffle_seed,
+    dragging_cup_id,
+    drop_target_idx,
+    just_dropped_cup_id,
+    drop_mouse_pos: Ref::new({ x: 0, y: 0 }),
+  }
+}
 
 ///|
 // 初始的三个碗，使用 lexicon key_between 生成初始 key
@@ -94,9 +160,6 @@ fn pseudo_random(seed : Int, max : Int) -> Int {
 fn comp_fractional_index_demo(
   states : @respo.RespoStatesTree,
 ) -> RespoNode[ActionOp] {
-  // 注入 CSS animation（只会执行一次）
-  inject_drop_animation_css()
-  
   let (state, cursor) : (DemoState, @respo_node.RespoCursor[DemoState]) = states.local_pair()
 
   // 初始化碗
@@ -373,6 +436,15 @@ fn comp_fractional_index_demo(
           }
         })
         @dom_ffi.log("setting state with new cups...")
+        // 获取鼠标位置并存入 state 的 Ref
+        state.drop_mouse_pos.val.x = original_event.client_x().to_int()
+        state.drop_mouse_pos.val.y = original_event.client_y().to_int()
+        @dom_ffi.log(
+          "mouse position: " +
+          state.drop_mouse_pos.val.x.to_string() +
+          ", " +
+          state.drop_mouse_pos.val.y.to_string(),
+        )
         let next_state = {
           ..state,
           cups: new_cups,
@@ -487,6 +559,16 @@ fn comp_fractional_index_demo(
     let cup_left : Float = start_offset +
       zone_width +
       Float::from_int(rank) * (cup_width + zone_width)
+
+    // 如果是刚放下的碗，计算从鼠标位置到最终位置的偏移并注入动画
+    if cup_just_dropped {
+      // 从 state 的 Ref 读取鼠标位置
+      let mouse_pos = state.drop_mouse_pos.val
+      let offset_x = mouse_pos.x - 280 - cup_left.to_int() - 45 // 280 是大约的舞台中心偏移
+      let offset_y = mouse_pos.y - 400 // 大约的碗位置 Y
+      inject_drop_animation(offset_x, offset_y)
+    }
+
     // 计算 transition：
     // - 正在拖拽的碗：无动画
     // - 刚刚放下的碗：无动画（用 CSS animation 实现下落）
