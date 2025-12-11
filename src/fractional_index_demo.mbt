@@ -767,14 +767,14 @@ let style_cup_body : String = @respo_node.static_style([
       display=Flex,
       align_items=Center,
       justify_content=Center,
+      box_shadow="inset 0 -16px 26px rgba(0,0,0,0.32), inset 0 6px 10px rgba(255,255,255,0.22), 0 10px 18px rgba(0,0,0,0.12)",
     )
     .add("border-bottom-left-radius", "32px")
     .add("border-bottom-right-radius", "32px")
     .add("border-top-left-radius", "20px")
     .add("border-top-right-radius", "20px")
-    .add("clip-path", "polygon(28% 0%, 72% 0%, 76% 10%, 88% 40%, 95% 80%, 98% 100%, 2% 100%, 5% 80%, 12% 40%, 24% 10%)")
     .add(
-      "box-shadow", "inset 0 -16px 26px rgba(0,0,0,0.32), inset 0 6px 10px rgba(255,255,255,0.22), 0 10px 18px rgba(0,0,0,0.12)",
+      "clip-path", "polygon(28% 0%, 72% 0%, 76% 10%, 88% 40%, 95% 80%, 98% 100%, 2% 100%, 5% 80%, 12% 40%, 24% 10%)",
     )
     .add(
       "background-image", "linear-gradient(145deg, rgba(255,255,255,0.18), rgba(0,0,0,0.08) 55%, rgba(0,0,0,0.22))",
@@ -790,8 +790,8 @@ let style_key_label : String = @respo_node.static_style([
       font_size=20,
       color=Hsl(0, 0, 100),
       font_family="Source Code Pro, monospace",
+      font_weight="900",
     )
-    .add("font-weight", "900")
     .add(
       "text-shadow", "0 1px 3px rgba(0,0,0,0.7), 0 0 10px rgba(0,0,0,0.35), 0 0 18px rgba(0,0,0,0.25)",
     )
@@ -832,7 +832,8 @@ let style_drop_zone : String = @respo_node.static_style([
       display=Flex,
       align_items=Center,
       justify_content=Center,
-    ).add("z-index", "10"),
+      z_index=10,
+    ),
   ),
 ])
 
