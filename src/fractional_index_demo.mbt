@@ -2,6 +2,8 @@
 // 三仙归洞 - Three Cups Magic Demo
 // Demonstrates fractional indexing with animated cup shuffling
 
+using @respo {type StateRef}
+
 ///|
 // 注入下落动画的 CSS keyframes时使用动态偏移量
 extern "js" fn inject_drop_animation(offset_x : Int, offset_y : Int) -> Unit =
