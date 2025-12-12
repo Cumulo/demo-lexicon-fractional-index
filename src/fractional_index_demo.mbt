@@ -37,6 +37,11 @@ struct DropAnimationData {
 }
 
 ///|
+impl Default for DropAnimationData with default() {
+  { drop_zone_idx: 0 }
+}
+
+///|
 struct DemoState {
   cups : Array[Cup]
   next_shuffle_seed : Int // 用于生成伪随机
@@ -44,8 +49,8 @@ struct DemoState {
   drop_target_idx : Int? // 悬停的放置目标位置索引
   just_dropped_cup_id : String? // 刚刚放下的碗 ID，用于下落动画
   // 临时数据，不参与序列化
-  drop_animation_data : Ref[DropAnimationData]
-}
+  drop_animation_data : StateRef[DropAnimationData]
+} derive(ToJson, @json.FromJson)
 
 ///|
 impl Default for DemoState with default() {
@@ -55,69 +60,7 @@ impl Default for DemoState with default() {
     dragging_cup_id: None,
     drop_target_idx: None,
     just_dropped_cup_id: None,
-    drop_animation_data: Ref::new({ drop_zone_idx: 0 }),
-  }
-}
-
-///|
-impl ToJson for DemoState with to_json(self) {
-  {
-    "cups": self.cups.to_json(),
-    "next_shuffle_seed": self.next_shuffle_seed.to_json(),
-    "dragging_cup_id": self.dragging_cup_id.to_json(),
-    "drop_target_idx": self.drop_target_idx.to_json(),
-    "just_dropped_cup_id": self.just_dropped_cup_id.to_json(),
-    // drop_animation_data 不序列化
-  }
-}
-
-///|
-impl @json.FromJson for DemoState with from_json(json, path) {
-  @dom_ffi.log("DemoState.from_json called with: " + json.stringify())
-  guard json is Object(obj) else {
-    @dom_ffi.log("DemoState.from_json: not an object!")
-    raise @json.JsonDecodeError((path, "DemoState: expected object"))
-  }
-  let cups : Array[Cup] = obj
-    .get("cups")
-    .map(fn(v) { @json.from_json(v, path=path.add_key("cups")) })
-    .unwrap_or([]) catch {
-      e => {
-        @dom_ffi.log(
-          "DemoState.from_json: failed to parse cups: " + e.to_string(),
-        )
-        []
-      }
-    }
-  let next_shuffle_seed : Int = obj
-    .get("next_shuffle_seed")
-    .map(fn(v) { @json.from_json(v, path=path.add_key("next_shuffle_seed")) })
-    .unwrap_or(0) catch {
-      _ => 0
-    }
-  let dragging_cup_id : String? = obj
-    .get("dragging_cup_id")
-    .map(fn(v) { @json.from_json(v, path=path.add_key("dragging_cup_id")) }) catch {
-      _ => None
-    }
-  let drop_target_idx : Int? = obj
-    .get("drop_target_idx")
-    .map(fn(v) { @json.from_json(v, path=path.add_key("drop_target_idx")) }) catch {
-      _ => None
-    }
-  let just_dropped_cup_id : String? = obj
-    .get("just_dropped_cup_id")
-    .map(fn(v) { @json.from_json(v, path=path.add_key("just_dropped_cup_id")) }) catch {
-      _ => None
-    }
-  @dom_ffi.log("DemoState.from_json: parsed successfully")
-  {
-    cups,
-    next_shuffle_seed,
-    dragging_cup_id,
-    drop_target_idx,
-    just_dropped_cup_id,
-    drop_animation_data: Ref::new({ drop_zone_idx: 0 }),
+    drop_animation_data: StateRef::new(DropAnimationData::default()),
   }
 }
 
@@ -457,7 +400,7 @@ fn comp_fractional_index_demo(
         })
         @dom_ffi.log("setting state with new cups...")
         // 存储动画数据：drop zone 索引
-        state.drop_animation_data.val.drop_zone_idx = zone_idx
+        state.drop_animation_data.borrow().val.drop_zone_idx = zone_idx
         @dom_ffi.log("drop zone_idx: " + zone_idx.to_string())
         let next_state = {
           ..state,
@@ -577,7 +520,7 @@ fn comp_fractional_index_demo(
     // 如果是刚放下的碗，计算从 drop zone 位置到最终位置的偏移并注入动画
     if cup_just_dropped {
       // 从 state 的 Ref 读取动画数据
-      let anim_data = state.drop_animation_data.val
+      let anim_data = state.drop_animation_data.borrow().val
       let drop_zone_idx = anim_data.drop_zone_idx
       // drop zone 的中心 X 位置（相对于容器）
       let zone_center_x : Float = start_offset +
