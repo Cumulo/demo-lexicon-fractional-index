@@ -1,4 +1,6 @@
 target/
 .mooncakes/
 
+drafts/*
+
 node_modules
