@@ -1,8 +1,18 @@
 ///|
-using @respo_node {div, span, button}
+using @css {respo_style}
 
 ///|
-using @css {respo_style}
+using @respo_node {
+  div,
+  p,
+  text_node,
+  button,
+  type RespoEvent,
+  type RespoNode,
+  type DispatchFn,
+}
+
+///|
 
 ///|
 let app_store_key : String = "mbt-workflow"
@@ -14,10 +24,12 @@ fn view(
   if false {
     raise @respo_node.RespoCommonError("TODO")
   }
-  // @dom_ffi.log("Store to render: " + store.to_json().stringify(indent=2))
+  @dom_ffi.log(
+    "view rendering, store states: " + store.get_states().to_json().stringify(),
+  )
   let states = store.get_states()
-  div(class_name=@respo.ui_global, style=respo_style(padding=Px(12)), [
-    comp_counter(states.pick("counter"), store.counted),
+  div(class_name=@respo.ui_global, style=respo_style(padding=12 |> Px), [
+    comp_fractional_index_demo(states.pick("fractional_demo")),
   ])
 }
 
@@ -34,8 +46,10 @@ fn main {
     app.backup_model_beforeunload()
     // @dom_ffi.log("store: " + app.store.val.to_json().stringify(indent=2))
     app.render_loop(fn() { view(app.store.val) }, fn(op) {
-      @dom_ffi.log("Action: \{op}")
-      app.store.val.update(op)
+      if not(op is StatesChange(_)) {
+        // @dom_ffi.log("Action: \{op}")
+      }
+      app.store.val = app.store.val.update(op)
     })
     let dev_mode = @dom_ffi.new_url_search_params(window.location().search()).get(
       "mode",
